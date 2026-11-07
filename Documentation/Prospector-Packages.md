@@ -151,6 +151,19 @@ The house becomes usable before optional terrain loading begins. Terrain follows
 
 The Meadow override affects the backdrop only. This release does not alter panorama radius or stitch terrain to the detailed site; the author must validate the transition and finite panorama shell together. Missing terrain does not remove the backdrop. Compiled terrain, walking on coarse terrain, streaming, and automatic GIS alignment are not implemented.
 
+## Optional site and sun position
+
+Packages can describe where the designs stand, so the sun panel in immersive view can light them for a chosen date and time:
+
+```json
+"site": {
+  "latitude": 51.05,
+  "northAngleDegrees": 180.9
+}
+```
+
+`latitude` is in degrees, positive north. `northAngleDegrees` is the angle from the model's forward direction (navigation −Z, SketchUp's green axis) clockwise to true north, seen from above, the same convention as SketchUp's Solar North. Times are solar time, so noon is when the sun stands highest; longitude and time zone are not needed and are ignored if present. A latitude outside −90…90 or a nonfinite north angle is rejected. Packages without `site` keep a fixed default sun and show no sun panel.
+
 ## Manifest
 
 Manifest format version 1:

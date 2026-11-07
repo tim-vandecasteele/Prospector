@@ -24,6 +24,7 @@ This fork keeps Christian's controller-driven USDZ viewer and adds:
 - **Progressive immersion.** Use the Digital Crown to move between a peripheral view of the real world and full immersion.
 - **Package-specific landscapes.** Models can replace the default meadow with a standard equirectangular photographic panorama and explicit yaw alignment. Scenery stays aligned as you move and turn, without changing the source model or its terrain collisions. The original Meadow remains available through a [hidden preference](Documentation/Prospector-Packages.md#hidden-meadow-override), without adding UI.
 - **Optional surrounding terrain.** Packages can share a coarse terrain USDZ across designs. It loads after the house, stays visual-only, and leaves the house usable if the terrain file is missing or unreadable. No terrain is required for existing packages.
+- **Sun and shadows.** Models are lit by a neutral sky and a shadow-casting sun. Packages with a `site` let you pick the sun's position for a few dates and times. See [the package format](Documentation/Prospector-Packages.md#optional-site-and-sun-position).
 - **Faster, safer model lifecycles.** Model switching releases the outgoing model before loading its replacement, cancels stale work, and manages RealityKit and ARKit resources explicitly.
 - **Architectural USDZ coordinate fixes.** Collision probing and terrain following correctly account for Z-up USDZ files, imported root transforms, model scale, and the viewer's physical position.
 
@@ -57,6 +58,8 @@ Pair a game controller, such as a Nintendo Switch Pro Controller, DualSense, or 
 | Look at the model and double tap | Jump to the next saved location |
 
 Press A to open the saved-locations panel. Movement pauses while it is visible, giving you a steady view as you add the current position or choose somewhere to revisit. Press A again to dismiss it, or use look and tap.
+
+When the package describes its site, a sun panel appears next to the saved locations. Choose one of six moments, from a midsummer morning to midwinter noon, to see the designs in that sunlight with matching shadows.
 
 The controller guide appears below your view and adapts to the connected controller's own labels and glyphs. Both panels stay where they first appear in the immersive world instead of following your head.
 

@@ -21,6 +21,7 @@ struct ModelDescriptor: Identifiable, Hashable, Sendable {
     let startPose: ViewerPose?
     let environment: LandscapeEnvironment?
     let terrain: TerrainDescriptor?
+    let site: SiteLocation?
 
     init(
         id: String,
@@ -31,7 +32,8 @@ struct ModelDescriptor: Identifiable, Hashable, Sendable {
         category: String? = nil,
         startPose: ViewerPose? = nil,
         environment: LandscapeEnvironment? = nil,
-        terrain: TerrainDescriptor? = nil
+        terrain: TerrainDescriptor? = nil,
+        site: SiteLocation? = nil
     ) {
         self.id = id
         self.displayName = displayName
@@ -42,6 +44,7 @@ struct ModelDescriptor: Identifiable, Hashable, Sendable {
         self.startPose = startPose
         self.environment = environment
         self.terrain = terrain
+        self.site = site
     }
 
     init(

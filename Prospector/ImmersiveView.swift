@@ -25,6 +25,9 @@ struct ImmersiveView: View {
     @State private var landscapeEntity: Entity?
     @State private var terrainLayer = TerrainLayer()
     @State private var defaultEnvironmentEntity: Entity?
+    @State private var imageBasedLightEntity: Entity?
+    @State private var sunEntity: Entity?
+    @State private var sunMoment: SunMoment = .summerNoon
     @State private var loadedModel: ModelDescriptor?
     @State private var updateSubscription: EventSubscription?
     @State private var worldTracking: WorldTrackingProvider?
@@ -59,10 +62,18 @@ struct ImmersiveView: View {
     let locationsPanelPosition = SIMD3<Float>(-0.55, -0.02, -1.0)
     let controllerGuidePosition = SIMD3<Float>(0, -0.43, -1.0)
     let hudPosition = SIMD3<Float>(0, 0.12, -1.0)
+    let skyLightIntensityExponent: Float = -0.5
+    let sunIntensity: Float = 2800
+    let sunShadowReach: Float = 70
+    let sunShadowRecenterDistance: Float = 25
+    let sunPanelPosition = SIMD3<Float>(0.55, -0.02, -1.0)
+    let defaultSunOrientation = simd_quatf(angle: .pi / 6, axis: SIMD3<Float>(0, 1, 0))
+        * simd_quatf(angle: -.pi / 4, axis: SIMD3<Float>(1, 0, 0))
 
     private enum ImmersiveAttachment: Hashable {
         case locations
         case controllerGuide
+        case sun
         case hud
     }
 
@@ -117,6 +128,39 @@ struct ImmersiveView: View {
                     print("Failed to load environment texture: \(error)")
                 }
             }
+
+            if let uniformSky = CGContext(
+                data: nil, width: 64, height: 32, bitsPerComponent: 8, bytesPerRow: 0,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+            ) {
+                uniformSky.setFillColor(gray: 1, alpha: 1)
+                uniformSky.fill(CGRect(x: 0, y: 0, width: 64, height: 32))
+                if let image = uniformSky.makeImage() {
+                    do {
+                        let environment = try await EnvironmentResource(equirectangular: image)
+                        let lightEntity = Entity()
+                        lightEntity.components.set(ImageBasedLightComponent(
+                            source: .single(environment),
+                            intensityExponent: skyLightIntensityExponent
+                        ))
+                        content.add(lightEntity)
+                        root.components.set(ImageBasedLightReceiverComponent(imageBasedLight: lightEntity))
+                        imageBasedLightEntity = lightEntity
+                    } catch {
+                        print("Failed to create image-based lighting: \(error)")
+                    }
+                }
+            }
+
+            let sun = Entity()
+            sun.components.set(DirectionalLightComponent(intensity: sunIntensity))
+            sun.components.set(DirectionalLightComponent.Shadow(
+                shadowProjection: .fixed(zNear: 0.1, zFar: 2 * sunShadowReach, orthographicScale: sunShadowReach),
+                depthBias: 1
+            ))
+            content.add(sun)
+            sunEntity = sun
             
             startARKit()
             
@@ -272,6 +316,24 @@ struct ImmersiveView: View {
                     // Landscape is already Y-up navigation-space geometry, not model-local.
                     landscapeEntity?.transform = Transform(rotation: yawRotation, translation: -rotatedPosition)
                     terrainLayer.updateNavigation(Transform(rotation: yawRotation, translation: -rotatedPosition))
+                    defaultEnvironmentEntity?.orientation = yawRotation
+                    if modelCoordinateSpace != nil, let sunOrientation {
+                        let viewer = navigationRuntime.playerPosition
+                        var shadowCenter = navigationRuntime.shadowCenter ?? viewer
+                        if simd_distance(SIMD2(shadowCenter.x, shadowCenter.z), SIMD2(viewer.x, viewer.z)) > sunShadowRecenterDistance {
+                            shadowCenter = viewer
+                        }
+                        navigationRuntime.shadowCenter = shadowCenter
+                        let sunPlacement = Transform(
+                            rotation: sunOrientation,
+                            translation: shadowCenter - sunOrientation.act(SIMD3<Float>(0, 0, -1)) * sunShadowReach
+                        )
+                        let navigationTransform = Transform(rotation: yawRotation, translation: -rotatedPosition)
+                        sunEntity?.transform = Transform(matrix: navigationTransform.matrix * sunPlacement.matrix)
+                        sunEntity?.isEnabled = true
+                    } else {
+                        sunEntity?.isEnabled = false
+                    }
                     navigationRuntime.isTransformDirty = false
                 }
 
@@ -301,6 +363,29 @@ struct ImmersiveView: View {
                 if isLocationsPanelPresented {
                     ControllerGuideView(presentation: controllerManager.presentation)
                         .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                }
+            }
+            Attachment(id: ImmersiveAttachment.sun) {
+                if isLocationsPanelPresented, loadedModel?.site != nil {
+                    VStack(alignment: .leading, spacing: 14) {
+                        Text("Sun")
+                            .font(.headline)
+                        ForEach(SunMoment.allCases) { moment in
+                            Button {
+                                sunMoment = moment
+                            } label: {
+                                Label(moment.title, systemImage: moment == sunMoment ? "checkmark" : "sun.max")
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .buttonStyle(.bordered)
+                            .buttonBorderShape(.roundedRectangle)
+                            .accessibilityAddTraits(moment == sunMoment ? .isSelected : [])
+                        }
+                    }
+                    .padding(24)
+                    .frame(width: 340)
+                    .glassBackgroundEffect(in: .rect(cornerRadius: 32))
+                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
                 }
             }
             Attachment(id: ImmersiveAttachment.hud) {
@@ -356,6 +441,9 @@ struct ImmersiveView: View {
         .onChange(of: modelSelection.poseResetRevision) { _, _ in
             resetToStartingPosition()
         }
+        .onChange(of: sunMoment) { _, _ in
+            navigationRuntime.isTransformDirty = true
+        }
         .onChange(of: controllerManager.toggleLocationsRevision) { _, _ in
             setLocationsPanelPresented(!isLocationsPanelPresented)
         }
@@ -380,6 +468,11 @@ struct ImmersiveView: View {
                 immersivePresentation.didFinishDismissal()
             }
         }
+    }
+
+    private var sunOrientation: simd_quatf? {
+        guard let site = loadedModel?.site else { return defaultSunOrientation }
+        return site.directionTowardSun(at: sunMoment).map { simd_quatf(from: SIMD3<Float>(0, 0, -1), to: -$0) }
     }
 
     private var locationsPanel: some View {
@@ -443,6 +536,13 @@ struct ImmersiveView: View {
             locations.position = locationsPanelPosition
             if locations.parent == nil {
                 anchor.addChild(locations)
+            }
+        }
+
+        if let sun = attachments.entity(for: ImmersiveAttachment.sun) {
+            sun.position = sunPanelPosition
+            if sun.parent == nil {
+                anchor.addChild(sun)
             }
         }
 
@@ -766,6 +866,10 @@ struct ImmersiveView: View {
         contentRoot = nil
         defaultEnvironmentEntity?.removeFromParent()
         defaultEnvironmentEntity = nil
+        imageBasedLightEntity?.removeFromParent()
+        imageBasedLightEntity = nil
+        sunEntity?.removeFromParent()
+        sunEntity = nil
         interfaceRoot?.removeFromParent()
         interfaceRoot = nil
         isInterfacePlacementPending = false
@@ -1192,6 +1296,7 @@ private final class NavigationRuntime {
     var lastPersistenceSampleTime: TimeInterval = 0
     var wasPoseChanging = false
     var isTransformDirty = true
+    var shadowCenter: SIMD3<Float>?
     private var isInitialSurfaceLandingPending = false
     private var initialSurfaceLandingDeadline: TimeInterval = 0
 
@@ -1221,6 +1326,7 @@ private final class NavigationRuntime {
     func endModel() {
         currentModelID = nil
         isInitialSurfaceLandingPending = false
+        shadowCenter = nil
     }
 
     func applyReferencePose(_ pose: ViewerPose) {

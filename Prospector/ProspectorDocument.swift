@@ -11,6 +11,7 @@ struct ProspectorManifest: Decodable {
     let defaultModelID: String
     let models: [ManifestModel]
     let terrains: [TerrainAsset]?
+    let site: SiteLocation?
 
     struct ManifestModel: Decodable {
         let id: String
@@ -176,6 +177,10 @@ enum ProspectorDocumentLoader {
             throw ProspectorDocumentError.noModels
         }
 
+        if let site = manifest.site, !site.isValid {
+            throw ProspectorDocumentError.unreadableManifest("site requires a latitude between -90 and 90 and a finite northAngleDegrees.")
+        }
+
         let terrainAssets = try TerrainConfiguration.resolveAssets(manifest.terrains ?? [], packageURL: packageURL)
         var modelIDs = Set<String>()
         var statePaths = Set<String>()
@@ -222,7 +227,8 @@ enum ProspectorDocumentLoader {
                 category: model.category,
                 startPose: try validatedPose(model.startPose, modelID: modelID, source: "manifest"),
                 environment: try LandscapeEnvironment.resolve(model.environment, packageURL: packageURL),
-                terrain: try TerrainConfiguration.descriptor(id: model.terrainID, placement: model.terrainPlacement, assets: terrainAssets)
+                terrain: try TerrainConfiguration.descriptor(id: model.terrainID, placement: model.terrainPlacement, assets: terrainAssets),
+                site: manifest.site
             )
         }
 
