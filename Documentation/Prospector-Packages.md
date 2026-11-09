@@ -164,6 +164,17 @@ Packages can describe where the designs stand, so the sun panel in immersive vie
 
 `latitude` is in degrees, positive north. `northAngleDegrees` is the angle from the model's forward direction (navigation −Z, SketchUp's green axis) clockwise to true north, seen from above, the same convention as SketchUp's Solar North. Times are solar time, so noon is when the sun stands highest; longitude and time zone are not needed and are ignored if present. A latitude outside −90…90 or a nonfinite north angle is rejected. Packages without `site` keep a fixed default sun and show no sun panel.
 
+A model whose lighting already contains the sun for one moment says so in its manifest entry:
+
+```json
+"bakedSun": {
+  "moment": "equinoxNoon",
+  "skyScale": 3
+}
+```
+
+Prospector then switches its live sun off for that model, multiplies the sky light by `skyScale`, and offers only that moment in the sun panel. The model's baked lighting stores light divided by `skyScale`, so a sunlit floor fits below 1. `moment` is one of `summerMorning`, `summerNoon`, `summerEvening`, `equinoxNoon`, `winterMorning`, `winterNoon`. A nonpositive or nonfinite `skyScale` is rejected.
+
 ## Manifest
 
 Manifest format version 1:

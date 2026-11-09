@@ -24,6 +24,7 @@ struct ProspectorManifest: Decodable {
         let environment: LandscapeConfiguration?
         let terrainID: String?
         let terrainPlacement: TerrainPlacement?
+        let bakedSun: BakedSun?
     }
 }
 
@@ -197,6 +198,9 @@ enum ProspectorDocumentLoader {
             guard modelIDs.insert(modelID).inserted else {
                 throw ProspectorDocumentError.duplicateModelID(modelID)
             }
+            if let bakedSun = model.bakedSun, !bakedSun.isValid {
+                throw ProspectorDocumentError.unreadableManifest("bakedSun for \(modelID) requires a positive, finite skyScale.")
+            }
 
             let modelURL = try validatedModelURL(
                 for: model.path,
@@ -228,7 +232,8 @@ enum ProspectorDocumentLoader {
                 startPose: try validatedPose(model.startPose, modelID: modelID, source: "manifest"),
                 environment: try LandscapeEnvironment.resolve(model.environment, packageURL: packageURL),
                 terrain: try TerrainConfiguration.descriptor(id: model.terrainID, placement: model.terrainPlacement, assets: terrainAssets),
-                site: manifest.site
+                site: manifest.site,
+                bakedSun: model.bakedSun
             )
         }
 

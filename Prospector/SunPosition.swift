@@ -29,7 +29,16 @@ struct SiteLocation: Decodable, Hashable, Sendable {
     }
 }
 
-enum SunMoment: CaseIterable, Identifiable, Hashable, Sendable {
+struct BakedSun: Decodable, Hashable, Sendable {
+    let moment: SunMoment
+    let skyScale: Float
+
+    var isValid: Bool {
+        skyScale.isFinite && skyScale > 0
+    }
+}
+
+enum SunMoment: String, CaseIterable, Identifiable, Hashable, Sendable, Decodable {
     case summerMorning
     case summerNoon
     case summerEvening

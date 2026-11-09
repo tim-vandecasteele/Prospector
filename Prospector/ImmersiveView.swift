@@ -142,7 +142,7 @@ struct ImmersiveView: View {
                         let lightEntity = Entity()
                         lightEntity.components.set(ImageBasedLightComponent(
                             source: .single(environment),
-                            intensityExponent: skyLightIntensityExponent
+                            intensityExponent: skyLightIntensityExponent + log2(loadedModel?.bakedSun?.skyScale ?? 1)
                         ))
                         content.add(lightEntity)
                         root.components.set(ImageBasedLightReceiverComponent(imageBasedLight: lightEntity))
@@ -330,7 +330,7 @@ struct ImmersiveView: View {
                         )
                         let navigationTransform = Transform(rotation: yawRotation, translation: -rotatedPosition)
                         sunEntity?.transform = Transform(matrix: navigationTransform.matrix * sunPlacement.matrix)
-                        sunEntity?.isEnabled = true
+                        sunEntity?.isEnabled = loadedModel?.bakedSun == nil
                     } else {
                         sunEntity?.isEnabled = false
                     }
@@ -370,7 +370,7 @@ struct ImmersiveView: View {
                     VStack(alignment: .leading, spacing: 14) {
                         Text("Sun")
                             .font(.headline)
-                        ForEach(SunMoment.allCases) { moment in
+                        ForEach(loadedModel?.bakedSun.map { [$0.moment] } ?? SunMoment.allCases) { moment in
                             Button {
                                 sunMoment = moment
                             } label: {
@@ -669,6 +669,11 @@ struct ImmersiveView: View {
             landscapeEntity = landscape
             defaultEnvironmentEntity?.isEnabled = landscape == nil
             loadedModel = model
+            if let bakedSun = model.bakedSun {
+                sunMoment = bakedSun.moment
+            }
+            imageBasedLightEntity?.components[ImageBasedLightComponent.self]?.intensityExponent =
+                skyLightIntensityExponent + log2(model.bakedSun?.skyScale ?? 1)
             modelCoordinateSpace = ModelCoordinateSpace(
                 importedRootTransform: entity.transform,
                 modelBounds: entity.visualBounds(relativeTo: entity)
