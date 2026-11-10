@@ -199,7 +199,7 @@ enum ProspectorDocumentLoader {
                 throw ProspectorDocumentError.duplicateModelID(modelID)
             }
             if let bakedSun = model.bakedSun, !bakedSun.isValid {
-                throw ProspectorDocumentError.unreadableManifest("bakedSun for \(modelID) requires a positive, finite skyScale.")
+                throw ProspectorDocumentError.unreadableManifest("bakedSun for \(modelID) requires a positive, finite skyScale, and moments that include its moment together with a lightingPath.")
             }
 
             let modelURL = try validatedModelURL(
@@ -233,7 +233,12 @@ enum ProspectorDocumentLoader {
                 environment: try LandscapeEnvironment.resolve(model.environment, packageURL: packageURL),
                 terrain: try TerrainConfiguration.descriptor(id: model.terrainID, placement: model.terrainPlacement, assets: terrainAssets),
                 site: manifest.site,
-                bakedSun: model.bakedSun
+                bakedSun: model.bakedSun,
+                bakedLightingURL: try validatedBakedLightingURL(
+                    for: model.bakedSun?.lightingPath,
+                    modelID: modelID,
+                    packageURL: packageURL
+                )
             )
         }
 
@@ -324,6 +329,27 @@ enum ProspectorDocumentLoader {
             throw ProspectorDocumentError.invalidStatePath(modelID: modelID)
         }
         return stateURL
+    }
+
+    private static func validatedBakedLightingURL(
+        for lightingPath: String?,
+        modelID: String,
+        packageURL: URL
+    ) throws -> URL? {
+        guard let lightingPath else { return nil }
+        let trimmedPath = lightingPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        let packageRoot = packageURL.standardizedFileURL.resolvingSymlinksInPath()
+        let packagePrefix = packageRoot.path.hasSuffix("/") ? packageRoot.path : packageRoot.path + "/"
+        let lightingURL = packageURL.appendingPathComponent(trimmedPath, isDirectory: true).standardizedFileURL.resolvingSymlinksInPath()
+        var isDirectory: ObjCBool = false
+        guard !trimmedPath.isEmpty,
+              !NSString(string: trimmedPath).isAbsolutePath,
+              lightingURL.path.hasPrefix(packagePrefix),
+              FileManager.default.fileExists(atPath: lightingURL.path, isDirectory: &isDirectory),
+              isDirectory.boolValue else {
+            throw ProspectorDocumentError.unreadableManifest("bakedSun.lightingPath for \(modelID) must name a folder inside the package.")
+        }
+        return lightingURL
     }
 
     private static func validatedCompiledModelURL(

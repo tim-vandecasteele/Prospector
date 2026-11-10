@@ -50,6 +50,7 @@ class GameControllerManager: ObservableObject {
     @Published var toggleLocationsRevision = 0
     @Published var previousLocationRevision = 0
     @Published var nextLocationRevision = 0
+    @Published var toggleFreeWalkRevision = 0
     @Published private(set) var presentation: ControllerPresentation?
 
     var navigationEnabled = true {
@@ -192,6 +193,11 @@ class GameControllerManager: ObservableObject {
             }
         }
 
+        gamepad.dpad.down.pressedChangedHandler = { [weak self] _, _, pressed in
+            guard pressed else { return }
+            self?.toggleFreeWalkRevision += 1
+        }
+
         gamepad.buttonA.pressedChangedHandler = { [weak self] _, _, pressed in
             guard pressed else { return }
             self?.toggleLocationsRevision += 1
@@ -267,6 +273,7 @@ class GameControllerManager: ObservableObject {
         gamepad.dpad.up.pressedChangedHandler = nil
         gamepad.dpad.right.pressedChangedHandler = nil
         gamepad.dpad.left.pressedChangedHandler = nil
+        gamepad.dpad.down.pressedChangedHandler = nil
         gamepad.buttonA.pressedChangedHandler = nil
         gamepad.buttonX.pressedChangedHandler = nil
         gamepad.buttonY.pressedChangedHandler = nil

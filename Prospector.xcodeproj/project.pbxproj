@@ -148,7 +148,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "$(TARGET_NAME)/Info.plist";
 				INFOPLIST_KEY_NSHandsTrackingUsageDescription = "This app uses hand tracking to toggle the visibility of immersive content";
-				INFOPLIST_KEY_NSWorldSensingUsageDescription = "This app uses head tracking to control movement direction";
+				INFOPLIST_KEY_NSWorldSensingUsageDescription = "This app uses head tracking to control movement direction and scans the room to fade the model near real obstacles";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -177,7 +177,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "$(TARGET_NAME)/Info.plist";
 				INFOPLIST_KEY_NSHandsTrackingUsageDescription = "This app uses hand tracking to toggle the visibility of immersive content";
-				INFOPLIST_KEY_NSWorldSensingUsageDescription = "This app uses head tracking to control movement direction";
+				INFOPLIST_KEY_NSWorldSensingUsageDescription = "This app uses head tracking to control movement direction and scans the room to fade the model near real obstacles";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",

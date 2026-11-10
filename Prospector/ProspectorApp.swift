@@ -16,7 +16,9 @@ struct ProspectorApp: App {
     @Environment(\.scenePhase) private var scenePhase
     @State private var modelSelection = ModelSelection()
     @State private var immersivePresentation = ImmersivePresentationState()
-    @State private var immersionStyle: ImmersionStyle = .progressive(
+    @State private var immersionStyle: ImmersionStyle = Self.progressiveImmersion
+
+    private static let progressiveImmersion: ProgressiveImmersionStyle = .progressive(
         0.2...1.0,
         initialAmount: 0.6,
         aspectRatio: .landscape
@@ -49,13 +51,9 @@ struct ProspectorApp: App {
                 immersivePresentation: immersivePresentation
             )
         }
-        .immersionStyle(
-            selection: $immersionStyle,
-            in: .progressive(
-                0.2...1.0,
-                initialAmount: 0.6,
-                aspectRatio: .landscape
-            )
-        )
+        .immersionStyle(selection: $immersionStyle, in: .mixed, Self.progressiveImmersion)
+        .onChange(of: immersivePresentation.isWalkingFreely) { _, isWalkingFreely in
+            immersionStyle = isWalkingFreely ? .mixed : Self.progressiveImmersion
+        }
     }
 }

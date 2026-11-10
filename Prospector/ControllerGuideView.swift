@@ -140,7 +140,7 @@ struct ControllerGuideView: View {
                 iconControl(presentation.dpadRight, action: "Terrain follow")
                     .frame(width: 80)
             }
-            iconControl(presentation.dpadDown, action: "Unassigned")
+            iconControl(presentation.dpadDown, action: "Free walking")
                 .frame(width: 88)
         }
     }

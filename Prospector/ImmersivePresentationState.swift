@@ -18,6 +18,7 @@ final class ImmersivePresentationState {
     private(set) var phase: ImmersivePresentationPhase = .closed
     private(set) var errorMessage: String?
     private(set) var wantsPresentation = false
+    var isWalkingFreely = false
     private var hasEnforcedWindowedLaunch = false
 
     var isTransitioning: Bool {
@@ -82,6 +83,7 @@ final class ImmersivePresentationState {
 
     func immersiveViewDidDisappear() {
         wantsPresentation = false
+        isWalkingFreely = false
         phase = .closed
     }
 

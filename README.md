@@ -52,6 +52,7 @@ Pair a game controller, such as a Nintendo Switch Pro Controller, DualSense, or 
 | D-pad up | Land on a model surface |
 | D-pad right | Toggle terrain follow |
 | D-pad left | Toggle faster movement |
+| D-pad down | Toggle free walking |
 | A | Show or dismiss saved locations |
 | X / Y | Jump to the previous / next saved location |
 | Look at the model and tap | Show or dismiss saved locations |
@@ -62,6 +63,8 @@ Press A to open the saved-locations panel. Movement pauses while it is visible, 
 When the package describes its site, a sun panel appears next to the saved locations. Choose one of six moments, from a midsummer morning to midwinter noon, to see the designs in that sunlight with matching shadows.
 
 The controller guide appears below your view and adapts to the connected controller's own labels and glyphs. Both panels stay where they first appear in the immersive world instead of following your head.
+
+Vision Pro normally fades to your surroundings when you walk more than about 1.5 m from where immersion started. Press D-pad down to walk freely instead: Prospector scans the room itself and fades the model away only when you come within about a metre of a real wall, pillar or piece of furniture, bringing it back once you step away. It sees what the headset has scanned, so low or thin objects, things behind you and moving people or pets may be missed. Press D-pad down again to return to the standard boundary.
 
 You can also tap your thumb and middle finger together and hold for half a second, using either hand, to hide or reveal the model.
 

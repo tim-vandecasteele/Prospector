@@ -29,6 +29,8 @@ struct ImmersiveView: View {
     @State private var sunEntity: Entity?
     @State private var sunMoment: SunMoment = .summerNoon
     @State private var loadedModel: ModelDescriptor?
+    @State private var bakedLightingMoment: SunMoment?
+    @State private var bakedLightingTask: Task<Void, Never>?
     @State private var updateSubscription: EventSubscription?
     @State private var worldTracking: WorldTrackingProvider?
     @State private var handTracking: HandTrackingProvider?
@@ -49,6 +51,7 @@ struct ImmersiveView: View {
     @State private var modeCueTask: Task<Void, Never>?
     @State private var isLocationsPanelPresented = false
     @State private var activeSavedLocationID: SavedLocation.ID?
+    @State private var obstacleDetection = ObstacleDetection()
     
     let movementSpeed: Float = 2.0
     let speedModeMultiplier: Float = 6.0
@@ -167,6 +170,27 @@ struct ImmersiveView: View {
             updateSubscription = content.subscribe(to: SceneEvents.Update.self) { event in
                 placeInterfaceRelativeToHeadIfNeeded()
 
+                let headPosition = immersivePresentation.isWalkingFreely
+                    ? worldTracking?.queryDeviceAnchor(atTimestamp: CACurrentMediaTime()).map {
+                        SIMD3<Float>($0.originFromAnchorTransform.columns.3.x,
+                                     $0.originFromAnchorTransform.columns.3.y,
+                                     $0.originFromAnchorTransform.columns.3.z)
+                    }
+                    : nil
+                let contentOpacity = obstacleDetection.advanceContentOpacity(
+                    headPosition: headPosition,
+                    deltaTime: Float(event.deltaTime)
+                )
+                for faded in [contentRoot, defaultEnvironmentEntity].compactMap({ $0 }) {
+                    if contentOpacity < 1 {
+                        if faded.components[OpacityComponent.self]?.opacity != contentOpacity {
+                            faded.components.set(OpacityComponent(opacity: contentOpacity))
+                        }
+                    } else if faded.components.has(OpacityComponent.self) {
+                        faded.components.remove(OpacityComponent.self)
+                    }
+                }
+
                 guard let entity = sceneEntity else { return }
                 
                 if entity.isEnabled != isContentVisible {
@@ -189,6 +213,7 @@ struct ImmersiveView: View {
                     != navigationRuntime.handledResetHeightRevision
                 let needsInitialSurfaceLanding = navigationRuntime.needsInitialSurfaceLanding
                 let needsDevicePose = movement != .zero
+                    || lookInput.x != 0
                     || shouldResetHeight
                     || needsInitialSurfaceLanding
                 var hasDevicePose = false
@@ -247,6 +272,11 @@ struct ImmersiveView: View {
                 // Handle look rotation from right thumbstick (yaw)
                 if lookInput.x != 0 {
                     let yawDelta = -lookInput.x * lookRotationSpeed * deltaTime
+                    let physicalPivot = SIMD3<Float>(devicePosition.x, 0, devicePosition.z)
+                    let previousRotation = simd_quatf(angle: -navigationRuntime.virtualYaw, axis: SIMD3<Float>(0, 1, 0))
+                    let nextRotation = simd_quatf(angle: -(navigationRuntime.virtualYaw + yawDelta), axis: SIMD3<Float>(0, 1, 0))
+                    navigationRuntime.playerPosition += previousRotation.inverse.act(physicalPivot)
+                        - nextRotation.inverse.act(physicalPivot)
                     navigationRuntime.virtualYaw += yawDelta
                     if navigationRuntime.virtualYaw > .pi {
                         navigationRuntime.virtualYaw -= 2 * .pi
@@ -370,17 +400,23 @@ struct ImmersiveView: View {
                     VStack(alignment: .leading, spacing: 14) {
                         Text("Sun")
                             .font(.headline)
-                        ForEach(loadedModel?.bakedSun.map { [$0.moment] } ?? SunMoment.allCases) { moment in
-                            Button {
-                                sunMoment = moment
-                            } label: {
-                                Label(moment.title, systemImage: moment == sunMoment ? "checkmark" : "sun.max")
-                                    .frame(maxWidth: .infinity, alignment: .leading)
+                        ScrollView {
+                            VStack(spacing: 8) {
+                                ForEach(loadedModel?.bakedSun?.selectableMoments ?? SunMoment.allCases) { moment in
+                                    Button {
+                                        sunMoment = moment
+                                    } label: {
+                                        Label(moment.title, systemImage: moment == sunMoment ? "checkmark" : "sun.max")
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .buttonBorderShape(.roundedRectangle)
+                                    .accessibilityAddTraits(moment == sunMoment ? .isSelected : [])
+                                }
                             }
-                            .buttonStyle(.bordered)
-                            .buttonBorderShape(.roundedRectangle)
-                            .accessibilityAddTraits(moment == sunMoment ? .isSelected : [])
                         }
+                        .scrollBounceBehavior(.basedOnSize)
+                        .frame(maxHeight: 340)
                     }
                     .padding(24)
                     .frame(width: 340)
@@ -441,8 +477,12 @@ struct ImmersiveView: View {
         .onChange(of: modelSelection.poseResetRevision) { _, _ in
             resetToStartingPosition()
         }
-        .onChange(of: sunMoment) { _, _ in
+        .onChange(of: sunMoment) { _, moment in
             navigationRuntime.isTransformDirty = true
+            switchBakedLighting(to: moment)
+        }
+        .onChange(of: controllerManager.toggleFreeWalkRevision) { _, _ in
+            Task { await toggleFreeWalking() }
         }
         .onChange(of: controllerManager.toggleLocationsRevision) { _, _ in
             setLocationsPanelPresented(!isLocationsPanelPresented)
@@ -517,7 +557,7 @@ struct ImmersiveView: View {
 
             Button("Add Location", systemImage: "plus") {
                 if let location = modelSelection.addSavedLocation(
-                    position: navigationRuntime.positionForPersistence,
+                    position: navigationRuntime.viewerPosition(physicalOffset: physicalHeadOffset()),
                     for: modelSelection.selectedModel
                 ) {
                     activeSavedLocationID = location.id
@@ -631,7 +671,7 @@ struct ImmersiveView: View {
         modelSelection.loadState = .loading(modelID: model.id)
 
         if let loadedModel {
-            modelSelection.recordPose(navigationRuntime.poseForPersistence, for: loadedModel)
+            modelSelection.recordPose(navigationRuntime.viewerPose(physicalOffset: physicalHeadOffset()), for: loadedModel)
             await modelSelection.flushPositionPersistence()
         }
 
@@ -669,6 +709,7 @@ struct ImmersiveView: View {
             landscapeEntity = landscape
             defaultEnvironmentEntity?.isEnabled = landscape == nil
             loadedModel = model
+            bakedLightingMoment = model.bakedSun?.moment
             if let bakedSun = model.bakedSun {
                 sunMoment = bakedSun.moment
             }
@@ -680,9 +721,10 @@ struct ImmersiveView: View {
             )
             navigationRuntime.beginModel(
                 model.id,
-                at: modelSelection.poseForLoading(model)
+                at: modelSelection.poseForLoading(model),
+                physicalOffset: physicalHeadOffset()
             )
-            modelSelection.recordPose(navigationRuntime.poseForPersistence, for: model)
+            modelSelection.recordPose(navigationRuntime.viewerPose(physicalOffset: physicalHeadOffset()), for: model)
             modelSelection.loadState = .loaded(modelID: model.id)
             let yaw = simd_quatf(angle: -navigationRuntime.virtualYaw, axis: SIMD3<Float>(0, 1, 0))
             terrainLayer.updateNavigation(Transform(rotation: yaw, translation: -simd_act(yaw, navigationRuntime.playerPosition)))
@@ -700,6 +742,47 @@ struct ImmersiveView: View {
                 modelID: model.id,
                 message: "Couldn’t load \(model.displayName): \(error.localizedDescription)"
             )
+        }
+    }
+
+    @MainActor
+    private func switchBakedLighting(to moment: SunMoment) {
+        guard let folder = loadedModel?.bakedLightingURL, let sceneEntity, moment != bakedLightingMoment else { return }
+        bakedLightingTask?.cancel()
+        bakedLightingTask = Task { @MainActor in
+            var bakedEntities: [(entity: Entity, atlas: Int)] = []
+            func collect(_ entity: Entity) {
+                if entity.components.has(ModelComponent.self),
+                   let range = entity.name.range(of: "_ao[0-9]+", options: .regularExpression),
+                   let atlas = Int(entity.name[range].dropFirst(3)) {
+                    bakedEntities.append((entity, atlas))
+                }
+                entity.children.forEach(collect)
+            }
+            collect(sceneEntity)
+            do {
+                var atlases: [Int: TextureResource] = [:]
+                for atlas in Set(bakedEntities.map(\.atlas)) {
+                    let url = folder.appending(path: moment.rawValue).appending(path: "atlas-\(atlas).png")
+                    atlases[atlas] = try await TextureResource(contentsOf: url, options: .init(semantic: .raw))
+                }
+                try Task.checkCancellation()
+                for (entity, atlas) in bakedEntities {
+                    guard var model = entity.components[ModelComponent.self], let resource = atlases[atlas] else { continue }
+                    model.materials = model.materials.map { material in
+                        guard var surface = material as? PhysicallyBasedMaterial, var lighting = surface.ambientOcclusion.texture else { return material }
+                        lighting.resource = resource
+                        surface.ambientOcclusion.texture = lighting
+                        return surface
+                    }
+                    entity.components.set(model)
+                }
+                bakedLightingMoment = moment
+            } catch is CancellationError {
+                return
+            } catch {
+                showModeCue("Couldn’t load the lighting for \(moment.title)")
+            }
         }
     }
 
@@ -788,6 +871,9 @@ struct ImmersiveView: View {
         landscapeEntity = nil
         defaultEnvironmentEntity?.isEnabled = true
         loadedModel = nil
+        bakedLightingTask?.cancel()
+        bakedLightingTask = nil
+        bakedLightingMoment = nil
         modelCoordinateSpace = nil
         navigationRuntime.endModel()
         navigationRuntime.wasPoseChanging = false
@@ -864,6 +950,8 @@ struct ImmersiveView: View {
         updateSubscription?.cancel()
         updateSubscription = nil
         stopARKit()
+        obstacleDetection.stop()
+        immersivePresentation.isWalkingFreely = false
 
         modeCueTask?.cancel()
         modeCueTask = nil
@@ -954,9 +1042,35 @@ struct ImmersiveView: View {
     }
     
     @MainActor
+    private func toggleFreeWalking() async {
+        if immersivePresentation.isWalkingFreely {
+            immersivePresentation.isWalkingFreely = false
+            obstacleDetection.stop()
+            showModeCue("Free Walking Off")
+        } else if await obstacleDetection.start() {
+            guard isImmersiveActive else {
+                obstacleDetection.stop()
+                return
+            }
+            immersivePresentation.isWalkingFreely = true
+            showModeCue("Free Walking On")
+        } else {
+            showModeCue("Free Walking Needs Room Scanning")
+        }
+    }
+
+    @MainActor
     private func toggleContentVisibility() {
         isContentVisible.toggle()
         sceneEntity?.isEnabled = isContentVisible
+    }
+
+    @MainActor
+    private func physicalHeadOffset() -> SIMD3<Float> {
+        guard let head = worldTracking?.queryDeviceAnchor(atTimestamp: CACurrentMediaTime())?.originFromAnchorTransform else {
+            return .zero
+        }
+        return SIMD3<Float>(head.columns.3.x, 0, head.columns.3.z)
     }
 
     @MainActor
@@ -971,14 +1085,14 @@ struct ImmersiveView: View {
     @MainActor
     private func recordCurrentPose() {
         guard let loadedModel else { return }
-        modelSelection.recordPose(navigationRuntime.poseForPersistence, for: loadedModel)
+        modelSelection.recordPose(navigationRuntime.viewerPose(physicalOffset: physicalHeadOffset()), for: loadedModel)
     }
 
     @MainActor
     private func resetToStartingPosition() {
         guard let loadedModel else { return }
 
-        navigationRuntime.applyReferencePose(loadedModel.startPose ?? .origin)
+        navigationRuntime.applyReferencePose(loadedModel.startPose ?? .origin, physicalOffset: physicalHeadOffset())
         recordCurrentPose()
         Task {
             await modelSelection.flushPositionPersistence()
@@ -1011,7 +1125,8 @@ struct ImmersiveView: View {
     @MainActor
     private func jump(to location: SavedLocation) {
         navigationRuntime.beginSavedLocationJump(
-            to: location.viewerPositionMeters.simdValue
+            to: location.viewerPositionMeters.simdValue,
+            physicalOffset: physicalHeadOffset()
         )
         activeSavedLocationID = location.id
         recordCurrentPose()
@@ -1313,19 +1428,23 @@ private final class NavigationRuntime {
             && CACurrentMediaTime() <= initialSurfaceLandingDeadline
     }
 
-    var poseForPersistence: ViewerPose {
-        ViewerPose(position: positionForPersistence, yawRadians: virtualYaw)
+    func viewerPose(physicalOffset: SIMD3<Float>) -> ViewerPose {
+        ViewerPose(position: viewerPosition(physicalOffset: physicalOffset), yawRadians: virtualYaw)
     }
 
-    var positionForPersistence: SIMD3<Float> {
-        playerPosition
+    func viewerPosition(physicalOffset: SIMD3<Float>) -> SIMD3<Float> {
+        playerPosition + virtualFromPhysicalRotation.act(physicalOffset)
     }
 
-    func beginModel(_ modelID: String, at pose: ViewerPose) {
+    private var virtualFromPhysicalRotation: simd_quatf {
+        simd_quatf(angle: virtualYaw, axis: SIMD3<Float>(0, 1, 0))
+    }
+
+    func beginModel(_ modelID: String, at pose: ViewerPose, physicalOffset: SIMD3<Float>) {
         currentModelID = modelID
         isInitialSurfaceLandingPending = !initiallyLandedModelIDs.contains(modelID)
         initialSurfaceLandingDeadline = CACurrentMediaTime() + 5
-        applyReferencePose(pose)
+        applyReferencePose(pose, physicalOffset: physicalOffset)
     }
 
     func endModel() {
@@ -1334,21 +1453,21 @@ private final class NavigationRuntime {
         shadowCenter = nil
     }
 
-    func applyReferencePose(_ pose: ViewerPose) {
-        applyReferencePosition(pose.position)
+    func applyReferencePose(_ pose: ViewerPose, physicalOffset: SIMD3<Float>) {
         virtualYaw = pose.yaw
+        applyReferencePosition(pose.position, physicalOffset: physicalOffset)
     }
 
-    func applyReferencePosition(_ position: SIMD3<Float>) {
-        playerPosition = position
+    private func applyReferencePosition(_ position: SIMD3<Float>, physicalOffset: SIMD3<Float>) {
+        playerPosition = position - virtualFromPhysicalRotation.act(physicalOffset)
         currentHeight = playerPosition.y
         lastPersistenceSampleTime = CACurrentMediaTime()
         wasPoseChanging = false
         isTransformDirty = true
     }
 
-    func beginSavedLocationJump(to position: SIMD3<Float>) {
-        applyReferencePosition(position)
+    func beginSavedLocationJump(to position: SIMD3<Float>, physicalOffset: SIMD3<Float>) {
+        applyReferencePosition(position, physicalOffset: physicalOffset)
         // Restore the saved coordinates exactly, without probing or height correction.
         isInitialSurfaceLandingPending = false
     }

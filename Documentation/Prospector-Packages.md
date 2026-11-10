@@ -173,7 +173,20 @@ A model whose lighting already contains the sun for one moment says so in its ma
 }
 ```
 
-Prospector then switches its live sun off for that model, multiplies the sky light by `skyScale`, and offers only that moment in the sun panel. The model's baked lighting stores light divided by `skyScale`, so a sunlit floor fits below 1. `moment` is one of `summerMorning`, `summerNoon`, `summerEvening`, `equinoxNoon`, `winterMorning`, `winterNoon`. A nonpositive or nonfinite `skyScale` is rejected.
+Prospector then switches its live sun off for that model, multiplies the sky light by `skyScale`, and offers only that moment in the sun panel. The model's baked lighting stores light divided by `skyScale`, so a sunlit floor fits below 1. `moment` is one of `summerMorning`, `summerNoon`, `summerEvening`, `equinoxNoon`, `winterMorning`, `winterNoon`, `summerEarlyMorning`, `equinoxMorning`, `equinoxEvening`, `winterAfternoon`. A nonpositive or nonfinite `skyScale` is rejected.
+
+A model baked for several moments lists them, with a folder of lighting atlases per moment:
+
+```json
+"bakedSun": {
+  "moment": "equinoxNoon",
+  "skyScale": 3,
+  "moments": ["equinoxNoon", "summerEvening"],
+  "lightingPath": "Design 01.lighting"
+}
+```
+
+`moment` is the one baked into the model itself and must be among `moments`. `lightingPath` is a folder inside the package with a subfolder per moment holding `atlas-0.png`, `atlas-1.png` and so on. The sun panel offers every listed moment; choosing one loads that moment's atlases and puts each on the materials of the meshes whose name contains `_ao` followed by the atlas number, replacing the ambient-occlusion texture. Only one moment's atlases stay in memory. `moments` and `lightingPath` come together; a manifest with only one of them, or a `lightingPath` outside the package, is rejected. Components lit by per-placement levels keep the levels of `moment`.
 
 ## Manifest
 

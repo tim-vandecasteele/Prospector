@@ -32,19 +32,29 @@ struct SiteLocation: Decodable, Hashable, Sendable {
 struct BakedSun: Decodable, Hashable, Sendable {
     let moment: SunMoment
     let skyScale: Float
+    let moments: [SunMoment]?
+    let lightingPath: String?
+
+    var selectableMoments: [SunMoment] {
+        moments ?? [moment]
+    }
 
     var isValid: Bool {
-        skyScale.isFinite && skyScale > 0
+        skyScale.isFinite && skyScale > 0 && selectableMoments.contains(moment) && (moments == nil) == (lightingPath == nil)
     }
 }
 
 enum SunMoment: String, CaseIterable, Identifiable, Hashable, Sendable, Decodable {
+    case summerEarlyMorning
     case summerMorning
     case summerNoon
     case summerEvening
+    case equinoxMorning
     case equinoxNoon
+    case equinoxEvening
     case winterMorning
     case winterNoon
+    case winterAfternoon
 
     var id: Self { self }
 
@@ -56,14 +66,18 @@ enum SunMoment: String, CaseIterable, Identifiable, Hashable, Sendable, Decodabl
         case .equinoxNoon: "21 March, noon"
         case .winterMorning: "21 December, 10:00"
         case .winterNoon: "21 December, noon"
+        case .summerEarlyMorning: "21 June, 06:00"
+        case .equinoxMorning: "21 March, 07:30"
+        case .equinoxEvening: "21 March, 16:30"
+        case .winterAfternoon: "21 December, 14:00"
         }
     }
 
     var dayOfYear: Int {
         switch self {
-        case .summerMorning, .summerNoon, .summerEvening: 172
-        case .equinoxNoon: 80
-        case .winterMorning, .winterNoon: 355
+        case .summerMorning, .summerNoon, .summerEvening, .summerEarlyMorning: 172
+        case .equinoxNoon, .equinoxMorning, .equinoxEvening: 80
+        case .winterMorning, .winterNoon, .winterAfternoon: 355
         }
     }
 
@@ -72,6 +86,10 @@ enum SunMoment: String, CaseIterable, Identifiable, Hashable, Sendable, Decodabl
         case .summerMorning: 8
         case .summerEvening: 18
         case .winterMorning: 10
+        case .summerEarlyMorning: 6
+        case .equinoxMorning: 7.5
+        case .equinoxEvening: 16.5
+        case .winterAfternoon: 14
         case .summerNoon, .equinoxNoon, .winterNoon: 12
         }
     }
